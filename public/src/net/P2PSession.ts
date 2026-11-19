@@ -1,8 +1,5 @@
 import * as THREE from 'three';
-import { joinRoom } from 'trystero';
 import type { StalkerSyncState } from '../ai/BiomassStalker';
-
-type TrysteroRoom = ReturnType<typeof joinRoom>;
 
 type PosePacket = {
   x: number;
@@ -45,7 +42,7 @@ export class P2PSession {
   private readonly handlers: WorldEventHandlers;
   private readonly badgeEl = document.getElementById('net-badge')!;
 
-  private room: TrysteroRoom | null = null;
+  private room: { leave: () => Promise<void> } | null = null;
   private roomCode = '';
   private readonly peers = new Map<string, RemoteSurvivor>();
 
@@ -77,7 +74,9 @@ export class P2PSession {
     this.roomCode = cleanCode;
     window.location.hash = `room=${encodeURIComponent(cleanCode)}`;
 
-    // identity: 'none' creates a unique peer ID per tab so local multi-tab testing works cleanly
+    // Dynamic import prevents WebRTC polyfill errors from blocking game startup
+    const { joinRoom } = await import('trystero');
+
     const room = joinRoom(
       {
         appId: 'arcology-sector-04-slice',
