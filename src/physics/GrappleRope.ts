@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '../physics/rapier';
+import RAPIER from './rapier';
 
 export class GrappleRope {
   private readonly segments = 18;
