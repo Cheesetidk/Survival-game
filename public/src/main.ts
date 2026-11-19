@@ -94,13 +94,31 @@ async function bootstrap(): Promise<void> {
     }),
   });
 
-  const hashMatch = window.location.hash.match(/room=([A-Za-z0-9-_]+)/);
-  const initialRoom = hashMatch ? decodeURIComponent(hashMatch[1]).toUpperCase() : 'SEC-04';
-  roomInput.value = initialRoom;
-  await p2p.connect(initialRoom);
+  // Bind UI and Pointer Lock controls FIRST so the menu is always responsive
+  enterBtn.addEventListener('click', () => {
+    audio.unlock();
+    try {
+      canvas.requestPointerLock();
+    } catch {
+      overlay.classList.add('hidden');
+    }
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    const locked = document.pointerLockElement === canvas;
+    if (!inventoryOpen) {
+      overlay.classList.toggle('hidden', locked);
+    }
+  });
+
+  document.addEventListener('pointerlockerror', () => {
+    overlay.classList.add('hidden');
+  });
 
   joinBtn.addEventListener('click', () => {
-    void p2p.connect(roomInput.value);
+    void p2p.connect(roomInput.value).catch((err) => {
+      console.warn('P2P reconnect failed:', err);
+    });
   });
 
   copyBtn.addEventListener('click', () => {
@@ -111,16 +129,12 @@ async function bootstrap(): Promise<void> {
     }, 1500);
   });
 
-  enterBtn.addEventListener('click', () => {
-    audio.unlock();
-    canvas.requestPointerLock();
-  });
-
-  document.addEventListener('pointerlockchange', () => {
-    const locked = document.pointerLockElement === canvas;
-    if (!inventoryOpen) {
-      overlay.classList.toggle('hidden', locked);
-    }
+  // Connect P2P room in the background without blocking the main menu
+  const hashMatch = window.location.hash.match(/room=([A-Za-z0-9-_]+)/);
+  const initialRoom = hashMatch ? decodeURIComponent(hashMatch[1]).toUpperCase() : 'SEC-04';
+  roomInput.value = initialRoom;
+  void p2p.connect(initialRoom).catch((err) => {
+    console.warn('Offline / P2P unavailable, running local sector:', err);
   });
 
   const setInventoryOpen = (open: boolean): void => {
@@ -264,7 +278,6 @@ async function bootstrap(): Promise<void> {
         suitIntegrity = Math.max(0, suitIntegrity - damage);
         updateSuitHUD();
         if (suitIntegrity === 0) {
-          // Emergency extraction back to the front airlock
           suitIntegrity = 100;
           updateSuitHUD();
           grapple.detach();
@@ -272,7 +285,6 @@ async function bootstrap(): Promise<void> {
         }
       }
 
-      // Diegetic screen-edge vignette scales with spore density & Stalker proximity
       const sporeDensity = suppressantTimer > 0 ? 0 : biomass.getIntensityAt(foot.x, foot.z);
       const stalkerDist = stalker.getPosition().distanceTo(foot);
       const threatProx = Math.max(0, 1 - stalkerDist / 10);
