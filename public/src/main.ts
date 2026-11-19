@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from './physics/rapier';
 import { MegastructureRoom } from './world/MegastructureRoom';
 import { FirstPersonController } from './player/FirstPersonController';
 import { BiomassGrid } from './biomass/BiomassGrid';
@@ -10,11 +10,16 @@ import { AcousticEngine } from './audio/AcousticEngine';
 import { BiomassStalker } from './ai/BiomassStalker';
 
 async function bootstrap(): Promise<void> {
+  const overlay = document.getElementById('overlay') as HTMLDivElement;
+  const enterBtn = document.getElementById('enter-btn') as HTMLButtonElement;
+  const netBadge = document.getElementById('net-badge') as HTMLDivElement;
+
+  enterBtn.textContent = 'INITIALIZING PHYSICS...';
+  enterBtn.disabled = true;
+
   await RAPIER.init();
 
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-  const overlay = document.getElementById('overlay') as HTMLDivElement;
-  const enterBtn = document.getElementById('enter-btn') as HTMLButtonElement;
   const roomInput = document.getElementById('room-input') as HTMLInputElement;
   const joinBtn = document.getElementById('join-btn') as HTMLButtonElement;
   const copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
@@ -94,13 +99,34 @@ async function bootstrap(): Promise<void> {
     }),
   });
 
-  // Bind UI and Pointer Lock controls FIRST so the menu is always responsive
-  enterBtn.addEventListener('click', () => {
+  const enterCorridor = (): void => {
     audio.unlock();
-    try {
-      canvas.requestPointerLock();
-    } catch {
-      overlay.classList.add('hidden');
+    overlay.classList.add('hidden');
+
+    if (typeof canvas.requestPointerLock === 'function') {
+      try {
+        const lockResult = canvas.requestPointerLock() as unknown;
+        if (lockResult && typeof (lockResult as Promise<void>).catch === 'function') {
+          (lockResult as Promise<void>).catch(() => {
+            player.enableFallbackLook();
+          });
+        }
+      } catch {
+        player.enableFallbackLook();
+      }
+    } else {
+      player.enableFallbackLook();
+    }
+  };
+
+  enterBtn.disabled = false;
+  enterBtn.textContent = 'ENTER MEGACORRIDOR';
+  enterBtn.addEventListener('click', enterCorridor);
+
+  // Clicking the canvas directly re-locks the mouse if you pressed ESC
+  canvas.addEventListener('click', () => {
+    if (!inventoryOpen && overlay.classList.contains('hidden') && !document.pointerLockElement) {
+      enterCorridor();
     }
   });
 
@@ -109,10 +135,6 @@ async function bootstrap(): Promise<void> {
     if (!inventoryOpen) {
       overlay.classList.toggle('hidden', locked);
     }
-  });
-
-  document.addEventListener('pointerlockerror', () => {
-    overlay.classList.add('hidden');
   });
 
   joinBtn.addEventListener('click', () => {
@@ -129,12 +151,11 @@ async function bootstrap(): Promise<void> {
     }, 1500);
   });
 
-  // Connect P2P room in the background without blocking the main menu
   const hashMatch = window.location.hash.match(/room=([A-Za-z0-9-_]+)/);
   const initialRoom = hashMatch ? decodeURIComponent(hashMatch[1]).toUpperCase() : 'SEC-04';
   roomInput.value = initialRoom;
-  void p2p.connect(initialRoom).catch((err) => {
-    console.warn('Offline / P2P unavailable, running local sector:', err);
+  void p2p.connect(initialRoom).catch(() => {
+    netBadge.textContent = 'SECTOR LOCAL // SOLO MODE';
   });
 
   const setInventoryOpen = (open: boolean): void => {
@@ -147,7 +168,7 @@ async function bootstrap(): Promise<void> {
         document.exitPointerLock();
       }
     } else {
-      canvas.requestPointerLock();
+      enterCorridor();
     }
   };
 
@@ -340,4 +361,11 @@ async function bootstrap(): Promise<void> {
   requestAnimationFrame(animate);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Boot error:', err);
+  const enterBtn = document.getElementById('enter-btn') as HTMLButtonElement | null;
+  if (enterBtn) {
+    enterBtn.style.background = '#bf616a';
+    enterBtn.textContent = `BOOT ERROR: ${err instanceof Error ? err.message : String(err)}`;
+  }
+});

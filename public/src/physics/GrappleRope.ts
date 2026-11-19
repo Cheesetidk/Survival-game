@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '../physics/rapier';
 
 export class GrappleRope {
   private readonly segments = 18;
@@ -49,7 +49,13 @@ export class GrappleRope {
   }
 
   public fireOrDetach(
-    world: RAPIER.World,
+    world: {
+      castRay(
+        ray: InstanceType<typeof RAPIER.Ray>,
+        maxToi: number,
+        solid: boolean
+      ): { timeOfImpact: number } | null;
+    },
     origin: THREE.Vector3,
     direction: THREE.Vector3
   ): boolean {

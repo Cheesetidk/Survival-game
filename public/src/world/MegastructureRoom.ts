@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import * as RAPIER from '@dimforge/rapier3d-compat';
-import { createBrutalistConcreteTextures } from '../textures/concreteTextures';
+import RAPIER from '../physics/rapier';
+import { createBrutalistConcreteTextures } from '../textures/ConcreteTextures';
 
 interface ChemLight {
   mesh: THREE.Mesh;

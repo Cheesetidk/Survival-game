@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '../physics/rapier';
 
 export class FirstPersonController {
   public readonly camera: THREE.PerspectiveCamera;
@@ -29,6 +29,7 @@ export class FirstPersonController {
   private exhausted = false;
   private bobTimer = 0;
   private currentEyeHeight = 1.65;
+  private fallbackLook = false;
 
   private readonly staminaWrap = document.getElementById('stamina-wrap')!;
   private readonly staminaBar = document.getElementById('stamina-bar')!;
@@ -143,7 +144,12 @@ export class FirstPersonController {
 
   private bindEvents(): void {
     document.addEventListener('pointerlockchange', () => {
-      this.isLocked = document.pointerLockElement !== null;
+      if (document.pointerLockElement !== null) {
+        this.fallbackLook = false;
+        this.isLocked = true;
+      } else if (!this.fallbackLook) {
+        this.isLocked = false;
+      }
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -167,6 +173,11 @@ export class FirstPersonController {
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
     });
+  }
+
+  public enableFallbackLook(): void {
+    this.fallbackLook = true;
+    this.isLocked = true;
   }
 
   public triggerArcSwing(): boolean {
