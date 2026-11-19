@@ -355,5 +355,57 @@
     </div>
 
     <script type="module" src="/src/main.ts"></script>
+  <div
+      id="diag-box"
+      style="
+        position: fixed;
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 10px 14px;
+        background: rgba(15, 18, 24, 0.92);
+        border: 1px solid #bf616a;
+        color: #ebcb8b;
+        font-size: 0.75rem;
+        line-height: 1.5;
+        z-index: 9999;
+        text-align: left;
+      "
+    >
+      DIAGNOSTIC: Checking page load...
+    </div>
+
+    <script>
+      const diag = document.getElementById('diag-box');
+      const rawModuleTag = document.querySelector('script[src="/src/main.ts"]');
+
+      if (location.hostname.endsWith('github.io') && rawModuleTag) {
+        diag.innerHTML =
+          '<strong>PROBLEM FOUND:</strong> GitHub Pages is serving your raw uncompiled <code>index.html</code> instead of the Vite build.<br>' +
+          'Fix: Ensure <code>.github/workflows/deploy.yml</code> is at the repo root, has a green checkmark in the <b>Actions</b> tab, and <b>Settings → Pages → Source</b> is set to <b>GitHub Actions</b>.';
+      } else {
+        diag.textContent = 'DIAGNOSTIC: Compiled build detected. Loading game modules...';
+      }
+
+      window.addEventListener(
+        'error',
+        (e) => {
+          const target = e.target;
+          if (target && target.src) {
+            diag.textContent = 'FAILED TO LOAD FILE: ' + target.src;
+          } else {
+            diag.textContent = 'JS ERROR: ' + (e.message || 'Unknown error');
+          }
+        },
+        true
+      );
+
+      window.addEventListener('unhandledrejection', (e) => {
+        diag.textContent = 'ASYNC ERROR: ' + (e.reason?.message || String(e.reason));
+      });
+    </script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
