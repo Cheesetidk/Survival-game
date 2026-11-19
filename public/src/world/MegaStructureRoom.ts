@@ -1,12 +1,11 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import * as RAPIER from '@dimforge/rapier3d-compat';
 import { createBrutalistConcreteTextures } from '../textures/concreteTextures';
 
 interface ChemLight {
   mesh: THREE.Mesh;
   light: THREE.PointLight;
   body: RAPIER.RigidBody;
-  age: number;
 }
 
 export class MegastructureRoom {
@@ -18,7 +17,7 @@ export class MegastructureRoom {
   private blastDoorMesh!: THREE.Mesh;
   private blastDoorBody!: RAPIER.RigidBody;
   private doorOpen = false;
-  private doorProgress = 0; // 0 = closed, 1 = open
+  private doorProgress = 0;
 
   private emergencyLight!: THREE.PointLight;
   private emergencyBulbMat!: THREE.MeshStandardMaterial;
@@ -34,6 +33,26 @@ export class MegastructureRoom {
     this.buildArchitecture();
     this.buildBlastDoor();
     this.buildAtmosphereLights();
+  }
+
+  public isDoorOpen(): boolean {
+    return this.doorProgress > 0.35;
+  }
+
+  public setDoorOpen(open: boolean): void {
+    this.doorOpen = open;
+  }
+
+  public getDoorTargetState(): boolean {
+    return this.doorOpen;
+  }
+
+  public toggleBlastDoor(): void {
+    this.doorOpen = !this.doorOpen;
+  }
+
+  public getActiveChemLightPositions(): THREE.Vector3[] {
+    return this.chemLights.map((c) => c.mesh.position.clone());
   }
 
   private createStaticBox(
@@ -88,14 +107,14 @@ export class MegastructureRoom {
     });
 
     // Main Transit Hall (16m wide x 9m tall x 36m long)
-    this.createStaticBox(16, 0.5, 36, 0, -0.25, -10, floorMat); // Floor
-    this.createStaticBox(16, 0.5, 36, 0, 9.25, -10, wallMat); // Ceiling
-    this.createStaticBox(0.8, 9, 36, -8.4, 4.5, -10, wallMat); // Left wall
-    this.createStaticBox(0.8, 9, 36, 8.4, 4.5, -10, wallMat); // Right wall
-    this.createStaticBox(16, 9, 0.8, 0, 4.5, 8.4, wallMat); // Rear bulkhead
-    this.createStaticBox(16, 9, 0.8, 0, 4.5, -28.4, wallMat); // Far bulkhead
+    this.createStaticBox(16, 0.5, 36, 0, -0.25, -10, floorMat);
+    this.createStaticBox(16, 0.5, 36, 0, 9.25, -10, wallMat);
+    this.createStaticBox(0.8, 9, 36, -8.4, 4.5, -10, wallMat);
+    this.createStaticBox(0.8, 9, 36, 8.4, 4.5, -10, wallMat);
+    this.createStaticBox(16, 9, 0.8, 0, 4.5, 8.4, wallMat);
+    this.createStaticBox(16, 9, 0.8, 0, 4.5, -28.4, wallMat);
 
-    // Brutalist concrete support ribs along corridor
+    // Brutalist concrete support ribs along corridor (grapple anchor points)
     for (const z of [2, -6, -14, -22]) {
       this.createStaticBox(1.1, 9, 1.1, -7.45, 4.5, z, wallMat);
       this.createStaticBox(1.1, 9, 1.1, 7.45, 4.5, z, wallMat);
@@ -103,15 +122,19 @@ export class MegastructureRoom {
     }
 
     // Partition Wall with Central Blast Door Aperture at z = -12
-    this.createStaticBox(6.2, 9, 0.8, -4.9, 4.5, -12, wallMat); // Left wing
-    this.createStaticBox(6.2, 9, 0.8, 4.9, 4.5, -12, wallMat); // Right wing
-    this.createStaticBox(3.6, 5.4, 0.8, 0, 6.3, -12, wallMat); // Upper header
+    this.createStaticBox(6.2, 9, 0.8, -4.9, 4.5, -12, wallMat);
+    this.createStaticBox(6.2, 9, 0.8, 4.9, 4.5, -12, wallMat);
+    this.createStaticBox(3.6, 5.4, 0.8, 0, 6.3, -12, wallMat);
 
     // Upper Steel Observation Catwalk (y = 4.0m) in rear bay
     this.createStaticBox(5.5, 0.25, 12, -5.25, 3.88, -20, steelMat);
-    this.createStaticBox(0.12, 1.0, 12, -2.55, 4.5, -20, steelMat); // Safety rail
+    this.createStaticBox(0.12, 1.0, 12, -2.55, 4.5, -20, steelMat);
 
-    // Concrete Staircase ascending to Catwalk
+    // Second High Sky-Walk Platform (y = 5.2m) reachable by grappling hook
+    this.createStaticBox(4.5, 0.25, 10, 5.75, 5.08, -21, steelMat);
+    this.createStaticBox(0.12, 1.0, 10, 3.55, 5.7, -21, steelMat);
+
+    // Concrete Staircase ascending to Left Catwalk
     const steps = 14;
     for (let i = 0; i < steps; i++) {
       const stepH = 4.0 / steps;
@@ -120,7 +143,7 @@ export class MegastructureRoom {
       this.createStaticBox(2.2, stepH, 0.5, -6.8, y, z, wallMat);
     }
 
-    // Low-poly stylized cover crates ("Unturned" silhouette contrast)
+    // Low-poly stylized cover crates
     const crateMat = new THREE.MeshStandardMaterial({
       color: 0x5c6650,
       roughness: 0.7,
@@ -134,7 +157,7 @@ export class MegastructureRoom {
 
   private buildBlastDoor(): void {
     const doorMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706, // Hazard industrial amber
+      color: 0xd97706,
       roughness: 0.42,
       metalness: 0.65,
       flatShading: true,
@@ -155,11 +178,9 @@ export class MegastructureRoom {
   }
 
   private buildAtmosphereLights(): void {
-    // Faint cold bounce so pitch-black corners retain readable silhouettes
-    const hemiLight = new THREE.HemisphereLight(0x283548, 0x0b0d10, 0.22);
+    const hemiLight = new THREE.HemisphereLight(0x283548, 0x0b0d10, 0.24);
     this.scene.add(hemiLight);
 
-    // Failing emergency sodium fixture near the blast door
     this.emergencyBulbMat = new THREE.MeshStandardMaterial({
       color: 0xff9e44,
       emissive: 0xff7b1c,
@@ -175,15 +196,10 @@ export class MegastructureRoom {
     this.scene.add(this.emergencyLight);
   }
 
-  public toggleBlastDoor(): void {
-    this.doorOpen = !this.doorOpen;
-  }
-
   public spawnChemLight(origin: THREE.Vector3, forward: THREE.Vector3): void {
     const color = this.chemPalette[this.chemColorIndex % this.chemPalette.length];
     this.chemColorIndex++;
 
-    // Compact stylized chem-light stick
     const geo = new THREE.CylinderGeometry(0.032, 0.032, 0.28, 8);
     const mat = new THREE.MeshStandardMaterial({
       color,
@@ -209,9 +225,8 @@ export class MegastructureRoom {
       .setFriction(0.7);
     this.world.createCollider(colliderDesc, body);
 
-    this.chemLights.push({ mesh, light, body, age: 0 });
+    this.chemLights.push({ mesh, light, body });
 
-    // Pool cap of 12 active chem-lights to keep GPU lighting fast
     if (this.chemLights.length > 12) {
       const oldest = this.chemLights.shift()!;
       this.scene.remove(oldest.mesh);
@@ -221,7 +236,6 @@ export class MegastructureRoom {
   }
 
   public update(dt: number): void {
-    // Smooth vertical blast door slide (y = 1.8m closed -> y = 5.15m open)
     const target = this.doorOpen ? 1 : 0;
     this.doorProgress += (target - this.doorProgress) * Math.min(1, dt * 4.5);
     const doorY = 1.8 + this.doorProgress * 3.35;
@@ -229,16 +243,13 @@ export class MegastructureRoom {
     this.blastDoorMesh.position.y = doorY;
     this.blastDoorBody.setNextKinematicTranslation({ x: 0, y: doorY, z: -12 });
 
-    // Subtle electrical flicker on emergency light
     this.flickerTimer += dt;
     const pulse =
       Math.sin(this.flickerTimer * 17.0) * Math.sin(this.flickerTimer * 43.0) > 0.78 ? 0.25 : 1.0;
     this.emergencyLight.intensity = 14 * pulse;
     this.emergencyBulbMat.emissiveIntensity = 2.2 * pulse;
 
-    // Sync thrown physical chem-lights
     for (const item of this.chemLights) {
-      item.age += dt;
       const t = item.body.translation();
       const r = item.body.rotation();
       item.mesh.position.set(t.x, t.y, t.z);

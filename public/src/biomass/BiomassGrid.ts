@@ -47,7 +47,7 @@ export class BiomassGrid {
     this.seedCluster(0, -19.5, 4.5);
     this.seedCluster(-3.5, -14.0, 2.2);
 
-    // Initialize instance matrices & colors so instanceColor buffer exists on frame 1
+    // Initialize instance colors so the buffer exists on frame 1
     for (let i = 0; i < total; i++) {
       this.tmpColor.setHex(0x2a1428);
       this.instancedMesh.setColorAt(i, this.tmpColor);
@@ -125,15 +125,46 @@ export class BiomassGrid {
     }
   }
 
+  public applyAlkalineSealant(worldX: number, worldZ: number, radius = 2.4): void {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const wx = this.originX + c * this.cellSize;
+        const wz = this.originZ + r * this.cellSize;
+        if (Math.hypot(wx - worldX, wz - worldZ) <= radius) {
+          const idx = this.index(c, r);
+          this.health[idx] *= 0.25;
+          this.scorched[idx] = 1.0;
+        }
+      }
+    }
+    this.syncVisuals();
+  }
+
+  public isLitByUV(worldX: number, worldZ: number): boolean {
+    for (const lamp of this.uvLamps) {
+      const dx = worldX - lamp.position.x;
+      const dy = 0.2 - lamp.position.y;
+      const dz = worldZ - lamp.position.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > 11.0 || dist < 0.01) continue;
+      const dot = (dx * lamp.direction.x + dy * lamp.direction.y + dz * lamp.direction.z) / dist;
+      if (dot > 0.68) return true;
+    }
+    return false;
+  }
+
+  public getIntensityAt(worldX: number, worldZ: number): number {
+    const c = Math.floor((worldX - this.originX + this.cellSize * 0.5) / this.cellSize);
+    const r = Math.floor((worldZ - this.originZ + this.cellSize * 0.5) / this.cellSize);
+    if (c < 0 || c >= this.cols || r < 0 || r >= this.rows) return 0;
+    return this.health[this.index(c, r)];
+  }
+
   public getMovementDragAt(worldX: number, worldY: number, worldZ: number): number {
     // Only slows player when walking near floor level (y < 1.2m)
     if (worldY > 1.2) return 1.0;
 
-    const c = Math.floor((worldX - this.originX + this.cellSize * 0.5) / this.cellSize);
-    const r = Math.floor((worldZ - this.originZ + this.cellSize * 0.5) / this.cellSize);
-    if (c < 0 || c >= this.cols || r < 0 || r >= this.rows) return 1.0;
-
-    const h = this.health[this.index(c, r)];
+    const h = this.getIntensityAt(worldX, worldZ);
     if (h < 0.25) return 1.0;
     return Math.max(0.45, 1.0 - h * 0.55);
   }
@@ -152,12 +183,13 @@ export class BiomassGrid {
             const dy = 0.05 - lamp.position.y;
             const dz = wz - lamp.position.z;
             const dist = Math.hypot(dx, dy, dz);
-            if (dist > 11.5) continue;
+            if (dist > 11.5 || dist < 0.01) continue;
 
             // Blocked if blast door is closed between lamp and cell
             if (!doorOpen && (lamp.position.z > -12) !== (wz > -12)) continue;
 
-            const dot = (dx * lamp.direction.x + dy * lamp.direction.y + dz * lamp.direction.z) / dist;
+            const dot =
+              (dx * lamp.direction.x + dy * lamp.direction.y + dz * lamp.direction.z) / dist;
             if (dot > 0.68) {
               this.health[idx] = Math.max(0, this.health[idx] - dt * 0.55);
               this.scorched[idx] = 1.0;

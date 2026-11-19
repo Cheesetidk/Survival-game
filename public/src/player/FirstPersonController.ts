@@ -13,6 +13,12 @@ export class FirstPersonController {
   private readonly beamCone: THREE.Mesh;
   private flashlightOn = true;
 
+  private readonly batonGroup: THREE.Group;
+  private readonly batonTipMat: THREE.MeshStandardMaterial;
+  private swingTimer = 0;
+  private stepDistAccum = 0;
+  private currentNoiseLevel = 0;
+
   private readonly keys = new Set<string>();
   private yaw = 0;
   private pitch = 0;
@@ -49,6 +55,7 @@ export class FirstPersonController {
     this.controller.enableSnapToGround(0.35);
     this.controller.setApplyImpulsesToDynamicBodies(true);
 
+    // Tactical flashlight
     this.flashlight = new THREE.SpotLight(0xeef6ff, 55, 34, Math.PI / 5.5, 0.45, 1.4);
     this.flashlight.position.set(0.18, -0.14, -0.1);
     this.flashlight.castShadow = true;
@@ -61,6 +68,7 @@ export class FirstPersonController {
     this.camera.add(this.flashlight);
     this.camera.add(this.flashlight.target);
 
+    // Additive volumetric fog cone
     const coneLen = 11;
     const coneRad = Math.tan(Math.PI / 5.5) * coneLen;
     const coneGeo = new THREE.ConeGeometry(coneRad, coneLen, 24, 1, true);
@@ -108,6 +116,27 @@ export class FirstPersonController {
     this.beamCone.position.copy(this.flashlight.position);
     this.camera.add(this.beamCone);
 
+    // Stylized low-poly Arc Baton viewmodel
+    this.batonGroup = new THREE.Group();
+    this.batonGroup.position.set(0.32, -0.26, -0.45);
+    this.batonGroup.rotation.set(0.25, -0.15, 0.1);
+
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.026, 0.52, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2e3440, roughness: 0.4, metalness: 0.85 })
+    );
+    this.batonGroup.add(shaft);
+
+    this.batonTipMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0ea5e9,
+      emissiveIntensity: 1.4,
+    });
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.12, 0.055), this.batonTipMat);
+    tip.position.y = 0.28;
+    this.batonGroup.add(tip);
+
+    this.camera.add(this.batonGroup);
     scene.add(this.camera);
     this.bindEvents();
   }
@@ -140,6 +169,27 @@ export class FirstPersonController {
     });
   }
 
+  public triggerArcSwing(): boolean {
+    if (this.swingTimer > 0) return false;
+    this.swingTimer = 0.32;
+    this.batonTipMat.emissiveIntensity = 5.5;
+    return true;
+  }
+
+  public isFlashlightOn(): boolean {
+    return this.flashlightOn;
+  }
+
+  public getNoiseLevel(): number {
+    return this.currentNoiseLevel;
+  }
+
+  public resetToSpawn(spawnPos: THREE.Vector3): void {
+    this.verticalVelocity = 0;
+    this.body.setNextKinematicTranslation({ x: spawnPos.x, y: spawnPos.y, z: spawnPos.z });
+    this.camera.position.set(spawnPos.x, spawnPos.y + 0.75, spawnPos.z);
+  }
+
   public isReelingWinch(): boolean {
     return this.isLocked && this.keys.has('KeyR');
   }
@@ -168,7 +218,8 @@ export class FirstPersonController {
     dt: number,
     speedMultiplier = 1.0,
     ropePull = new THREE.Vector3(),
-    ropeAttached = false
+    ropeAttached = false,
+    onFootstep?: (sprinting: boolean) => void
   ): void {
     const euler = new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ');
     this.camera.quaternion.setFromEuler(euler);
@@ -253,8 +304,28 @@ export class FirstPersonController {
     if (this.grounded && horizSpeed > 0.4) {
       this.bobTimer += dt * (wantsSprint ? 13.5 : 9.5);
       bobOffset = Math.sin(this.bobTimer) * (wantsSprint ? 0.045 : 0.025);
+
+      this.currentNoiseLevel = wantsSprint ? 1.0 : wantsCrouch ? 0.18 : 0.52;
+      this.stepDistAccum += horizSpeed * dt;
+      const strideLen = wantsSprint ? 2.6 : 1.9;
+      if (this.stepDistAccum >= strideLen) {
+        this.stepDistAccum = 0;
+        onFootstep?.(wantsSprint);
+      }
     } else {
       this.bobTimer = 0;
+      this.currentNoiseLevel = 0.05;
+    }
+
+    // Animate Arc Baton swing recovery
+    if (this.swingTimer > 0) {
+      this.swingTimer = Math.max(0, this.swingTimer - dt);
+      const swingArc = Math.sin((this.swingTimer / 0.32) * Math.PI);
+      this.batonGroup.rotation.x = 0.25 - swingArc * 1.15;
+      this.batonGroup.position.z = -0.45 - swingArc * 0.22;
+      if (this.swingTimer === 0) {
+        this.batonTipMat.emissiveIntensity = 1.4;
+      }
     }
 
     this.camera.position.set(nextX, nextY - 0.9 + this.currentEyeHeight + bobOffset, nextZ);

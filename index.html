@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arcology — Sector 04 Transit Junction</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050608;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        color: #d8dee9;
+      }
+      #game-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      /* Diegetic spore & proximity screen-edge distortion overlay */
+      #spore-vignette {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+        opacity: 0;
+        background: radial-gradient(
+          circle at center,
+          transparent 54%,
+          rgba(126, 34, 206, 0.28) 84%,
+          rgba(159, 18, 57, 0.55) 100%
+        );
+        transition: opacity 0.2s ease;
+      }
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(5, 6, 8, 0.86);
+        backdrop-filter: blur(5px);
+        z-index: 20;
+        text-align: center;
+        padding: 24px;
+      }
+      #overlay.hidden {
+        display: none;
+      }
+      #overlay h1 {
+        font-size: 1.4rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #eceff4;
+        margin-bottom: 10px;
+      }
+      #overlay p {
+        font-size: 0.82rem;
+        color: #8fbcbb;
+        line-height: 1.75;
+        margin-bottom: 18px;
+      }
+      .coop-bar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 18px;
+        background: rgba(20, 24, 30, 0.9);
+        border: 1px solid #3b4252;
+        padding: 8px 12px;
+      }
+      .coop-bar input {
+        background: #0d1015;
+        border: 1px solid #4c566a;
+        color: #eceff4;
+        font-family: inherit;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+        width: 140px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      button {
+        background: #2e3440;
+        color: #eceff4;
+        border: 1px solid #4c566a;
+        font-family: inherit;
+        font-size: 0.78rem;
+        letter-spacing: 0.1em;
+        padding: 7px 12px;
+        cursor: pointer;
+        text-transform: uppercase;
+      }
+      button:hover {
+        background: #3b4252;
+        border-color: #88c0d0;
+      }
+      #enter-btn {
+        background: #d97706;
+        border-color: #f59e0b;
+        color: #090b0e;
+        font-weight: 700;
+        padding: 10px 24px;
+        font-size: 0.88rem;
+      }
+      #enter-btn:hover {
+        background: #f59e0b;
+      }
+      #net-badge {
+        position: fixed;
+        top: 14px;
+        right: 16px;
+        font-size: 0.74rem;
+        letter-spacing: 0.12em;
+        padding: 5px 10px;
+        background: rgba(10, 13, 18, 0.75);
+        border: 1px solid #2e3440;
+        color: #88c0d0;
+        pointer-events: none;
+        z-index: 5;
+      }
+      #suit-hud {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        pointer-events: none;
+        z-index: 5;
+      }
+      #suit-label {
+        font-size: 0.68rem;
+        letter-spacing: 0.14em;
+        color: #8fbcbb;
+        margin-bottom: 4px;
+      }
+      #suit-track {
+        width: 150px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      #suit-bar {
+        width: 100%;
+        height: 100%;
+        background: #a3be8c;
+        transform-origin: left center;
+        transition: background 0.2s ease;
+      }
+      #reticle {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: rgba(236, 239, 244, 0.65);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 5;
+      }
+      #prompt {
+        position: fixed;
+        top: calc(50% + 22px);
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        color: #ebcb8b;
+        text-shadow: 0 1px 4px #000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+        z-index: 5;
+      }
+      #prompt.visible {
+        opacity: 1;
+      }
+      #status-tag {
+        position: fixed;
+        bottom: 42px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        letter-spacing: 0.14em;
+        color: #b48ead;
+        text-shadow: 0 1px 4px #000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        z-index: 5;
+      }
+      #status-tag.visible {
+        opacity: 1;
+      }
+      #stamina-wrap {
+        position: fixed;
+        bottom: 26px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 180px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+        z-index: 5;
+      }
+      #stamina-wrap.active {
+        opacity: 1;
+      }
+      #stamina-bar {
+        width: 100%;
+        height: 100%;
+        background: #88c0d0;
+        transform-origin: left center;
+      }
+      #inv-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(5, 6, 8, 0.78);
+        backdrop-filter: blur(4px);
+        z-index: 15;
+      }
+      #inv-modal.open {
+        display: flex;
+      }
+      .inv-panel {
+        display: grid;
+        grid-template-columns: 280px 320px;
+        gap: 18px;
+        background: #0e1116;
+        border: 1px solid #3b4252;
+        padding: 18px;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.75);
+      }
+      .panel-title {
+        font-size: 0.78rem;
+        letter-spacing: 0.16em;
+        color: #88c0d0;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+      #inv-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 42px);
+        grid-template-rows: repeat(4, 42px);
+        gap: 3px;
+        background: #07090c;
+        padding: 6px;
+        border: 1px solid #2e3440;
+        position: relative;
+      }
+      .grid-cell {
+        width: 42px;
+        height: 42px;
+        background: #13171e;
+        border: 1px solid #1f2530;
+      }
+      .inv-item {
+        position: absolute;
+        padding: 4px;
+        font-size: 0.65rem;
+        line-height: 1.2;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      .inv-item:hover {
+        border-color: #eceff4;
+      }
+      .recipe-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .recipe-card {
+        background: #141820;
+        border: 1px solid #2e3440;
+        padding: 8px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .recipe-info strong {
+        display: block;
+        font-size: 0.78rem;
+        color: #eceff4;
+      }
+      .recipe-info span {
+        font-size: 0.68rem;
+        color: #8fbcbb;
+      }
+      #inv-hint {
+        margin-top: 10px;
+        font-size: 0.7rem;
+        color: #d08770;
+        min-height: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+    <div id="spore-vignette"></div>
+    <div id="net-badge">P2P SECTOR: CONNECTING...</div>
+    <div id="suit-hud">
+      <div id="suit-label">SUIT INTEGRITY // 100%</div>
+      <div id="suit-track"><div id="suit-bar"></div></div>
+    </div>
+    <div id="reticle"></div>
+    <div id="prompt">[E] INTERACT</div>
+    <div id="status-tag">BIOMASS ENTANGLEMENT</div>
+    <div id="stamina-wrap"><div id="stamina-bar"></div></div>
+
+    <div id="inv-modal">
+      <div class="inv-panel">
+        <div>
+          <div class="panel-title">TACTILE RIG (6×4 GRID)</div>
+          <div id="inv-grid"></div>
+          <div id="inv-hint">Click an item to use/deploy, or press [TAB] to close.</div>
+        </div>
+        <div>
+          <div class="panel-title">TIER 1 // FIELD CRAFTING</div>
+          <div class="recipe-list" id="recipe-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <h1>SECTOR 04 // TRANSIT JUNCTION</h1>
+      <p>
+        [WASD] Move  |  [SHIFT] Sprint  |  [C] Crouch  |  [SPACE] Jump<br />
+        [LEFT-CLICK] Arc Baton Pulse  |  [RIGHT-CLICK] Grapple  |  [R] Reel Winch<br />
+        [F] Flashlight  |  [G] Chem-Light  |  [V] UV-C Lamp  |  [H] Sealant  |  [E] Interact  |  [TAB] Rig
+      </p>
+      <div class="coop-bar">
+        <input id="room-input" type="text" maxlength="14" placeholder="ROOM CODE" />
+        <button id="join-btn" type="button">Sync Sector</button>
+        <button id="copy-btn" type="button">Copy Invite</button>
+      </div>
+      <button id="enter-btn" type="button">ENTER MEGACORRIDOR</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
